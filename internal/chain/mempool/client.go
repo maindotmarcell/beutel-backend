@@ -126,6 +126,33 @@ func (c *Client) GetUTXOs(address string) ([]types.UTXO, error) {
 	return utxos, nil
 }
 
+// mempoolTxInput represents a transaction input from mempool.space
+type mempoolTxInput struct {
+	Prevout *struct {
+		ScriptpubkeyAddress string `json:"scriptpubkey_address"`
+		Value               int64  `json:"value"`
+	} `json:"prevout"`
+}
+
+// mempoolTxOutput represents a transaction output from mempool.space
+type mempoolTxOutput struct {
+	ScriptpubkeyAddress string `json:"scriptpubkey_address"`
+	Value               int64  `json:"value"`
+}
+
+// mempoolTx represents a full transaction from mempool.space
+type mempoolTx struct {
+	Txid   string `json:"txid"`
+	Status struct {
+		Confirmed   bool  `json:"confirmed"`
+		BlockHeight int64 `json:"block_height"`
+		BlockTime   int64 `json:"block_time"`
+	} `json:"status"`
+	Vin  []mempoolTxInput  `json:"vin"`
+	Vout []mempoolTxOutput `json:"vout"`
+	Fee  int64             `json:"fee"`
+}
+
 func (c *Client) GetTransactions(address string) ([]types.Transaction, error) {
 	url := fmt.Sprintf("%s/api/address/%s/txs", c.baseURL, address)
 
@@ -140,32 +167,95 @@ func (c *Client) GetTransactions(address string) ([]types.Transaction, error) {
 		return nil, fmt.Errorf("mempool API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	var mempoolTxs []struct {
-		Txid   string `json:"txid"`
-		Status struct {
-			Confirmed   bool  `json:"confirmed"`
-			BlockHeight int64 `json:"block_height"`
-			BlockTime   int64 `json:"block_time"`
-		} `json:"status"`
-		Fee int64 `json:"fee"`
-	}
-
+	var mempoolTxs []mempoolTx
 	if err := json.NewDecoder(resp.Body).Decode(&mempoolTxs); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	txs := make([]types.Transaction, len(mempoolTxs))
 	for i, tx := range mempoolTxs {
-		txs[i] = types.Transaction{
-			Txid:        tx.Txid,
-			Confirmed:   tx.Status.Confirmed,
-			BlockHeight: tx.Status.BlockHeight,
-			BlockTime:   tx.Status.BlockTime,
-			Fee:         tx.Fee,
-		}
+		txs[i] = enrichTransaction(tx, address)
 	}
 
 	return txs, nil
+}
+
+// enrichTransaction calculates send/receive direction and amounts for a transaction
+func enrichTransaction(tx mempoolTx, address string) types.Transaction {
+	// Check if address appears in inputs (sender) or outputs (receiver)
+	isInInputs := false
+	for _, vin := range tx.Vin {
+		if vin.Prevout != nil && vin.Prevout.ScriptpubkeyAddress == address {
+			isInInputs = true
+			break
+		}
+	}
+
+	// Determine transaction type
+	// If address is in inputs, it's a send (we're spending)
+	// If only in outputs, it's a receive
+	txType := "receive"
+	if isInInputs {
+		txType = "send"
+	}
+
+	// Calculate amount
+	var amountSats int64
+	if txType == "send" {
+		// For sends, sum all outputs to other addresses (excluding change back to us)
+		for _, vout := range tx.Vout {
+			if vout.ScriptpubkeyAddress != address {
+				amountSats += vout.Value
+			}
+		}
+	} else {
+		// For receives, sum all outputs to our address
+		for _, vout := range tx.Vout {
+			if vout.ScriptpubkeyAddress == address {
+				amountSats += vout.Value
+			}
+		}
+	}
+
+	// Get the other party's address
+	var otherAddr string
+	if txType == "send" {
+		// For sends, get the recipient address (first output that's not us)
+		for _, vout := range tx.Vout {
+			if vout.ScriptpubkeyAddress != address {
+				otherAddr = vout.ScriptpubkeyAddress
+				break
+			}
+		}
+	} else {
+		// For receives, get the sender address (first input that's not us)
+		for _, vin := range tx.Vin {
+			if vin.Prevout != nil && vin.Prevout.ScriptpubkeyAddress != address {
+				otherAddr = vin.Prevout.ScriptpubkeyAddress
+				break
+			}
+		}
+	}
+
+	// Fallback: if we couldn't find the other address, use first available
+	if otherAddr == "" {
+		if txType == "send" && len(tx.Vout) > 0 {
+			otherAddr = tx.Vout[0].ScriptpubkeyAddress
+		} else if txType == "receive" && len(tx.Vin) > 0 && tx.Vin[0].Prevout != nil {
+			otherAddr = tx.Vin[0].Prevout.ScriptpubkeyAddress
+		}
+	}
+
+	return types.Transaction{
+		Txid:        tx.Txid,
+		Type:        txType,
+		AmountSats:  amountSats,
+		OtherAddr:   otherAddr,
+		Confirmed:   tx.Status.Confirmed,
+		BlockHeight: tx.Status.BlockHeight,
+		BlockTime:   tx.Status.BlockTime,
+		FeeSats:     tx.Fee,
+	}
 }
 
 func (c *Client) GetFeeRates() (*types.FeeRates, error) {

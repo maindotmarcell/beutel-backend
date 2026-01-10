@@ -10,16 +10,16 @@ flowchart LR
         Keys[Private Keys]
         Signing[TX Signing]
     end
-    
+
     subgraph backend [Beutel Backend]
         Fiber[Fiber Server]
         Provider[Chain Provider]
     end
-    
+
     subgraph external [External]
         Mempool[mempool.space]
     end
-    
+
     mobile -->|"1. Fetch UTXOs/fees"| Fiber
     Fiber --> Provider
     Provider --> Mempool
@@ -33,18 +33,19 @@ flowchart LR
 
 ### Security Model (Non-Custodial)
 
-| Stays on Mobile | Handled by Backend |
-|-----------------|-------------------|
+| Stays on Mobile        | Handled by Backend     |
+| ---------------------- | ---------------------- |
 | Seed phrase / mnemonic | Public address queries |
-| Private keys | UTXO fetching |
-| Transaction signing | Fee rate estimates |
-| | Broadcasting signed TX |
+| Private keys           | UTXO fetching          |
+| Transaction signing    | Fee rate estimates     |
+|                        | Broadcasting signed TX |
 
 **Keys never leave the device.** The backend only sees public addresses and pre-signed transaction hex.
 
 ### Swappable Provider
 
 The chain provider is abstracted behind an interface. Currently uses mempool.space, but can be swapped for:
+
 - Electrum server
 - Own Bitcoin node + indexer
 - Other block explorers
@@ -58,7 +59,7 @@ GET /health
 ```
 
 ```json
-{"status": "ok", "network": "testnet4"}
+{ "status": "ok", "network": "testnet4" }
 ```
 
 ### Get Balance
@@ -72,7 +73,7 @@ curl http://localhost:3000/v1/address/tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx
 ```
 
 ```json
-{"confirmed": 50000, "unconfirmed": 0, "total": 50000}
+{ "confirmed": 50000, "unconfirmed": 0, "total": 50000 }
 ```
 
 ### Get UTXOs
@@ -152,14 +153,14 @@ curl -X POST http://localhost:3000/v1/tx/broadcast \
 ```
 
 ```json
-{"txid": "abc123def456..."}
+{ "txid": "abc123def456..." }
 ```
 
 ## Configuration
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `3000` |
+| Variable  | Description     | Default   |
+| --------- | --------------- | --------- |
+| `PORT`    | Server port     | `3000`    |
 | `NETWORK` | Bitcoin network | `mainnet` |
 
 Supported networks: `mainnet`, `testnet3`, `testnet4`, `signet`
@@ -196,7 +197,7 @@ Edit `docker-compose.yaml` to change the network:
 
 ```yaml
 environment:
-  - NETWORK=mainnet  # or testnet3, testnet4, signet
+  - NETWORK=mainnet # or testnet3, testnet4, signet
 ```
 
 ## Project Structure

@@ -16,13 +16,16 @@ type UTXO struct {
 	BlockHeight int64  `json:"blockHeight,omitempty"`
 }
 
-// Transaction represents a transaction in the address history
+// Transaction represents an enriched transaction with send/receive info
 type Transaction struct {
 	Txid        string `json:"txid"`
+	Type        string `json:"type"`                  // "send" or "receive"
+	AmountSats  int64  `json:"amountSats"`            // net amount for this address
+	OtherAddr   string `json:"otherAddr"`             // recipient (for send) or sender (for receive)
 	Confirmed   bool   `json:"confirmed"`
 	BlockHeight int64  `json:"blockHeight,omitempty"`
 	BlockTime   int64  `json:"blockTime,omitempty"`
-	Fee         int64  `json:"fee"`
+	FeeSats     int64  `json:"feeSats"`
 }
 
 // FeeRates represents recommended fee rates in sat/vB
