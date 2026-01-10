@@ -1,0 +1,9 @@
+services:
+  backend:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NETWORK=testnet4
+    restart: unless-stopped
