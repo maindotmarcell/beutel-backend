@@ -1,0 +1,6 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+startCommand = "./server"
+healthcheckPath = "/health"  # if you have a health endpoint
