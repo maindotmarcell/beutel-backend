@@ -1,6 +1,8 @@
 [build]
 builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+buildCommand = ""
 
 [deploy]
 startCommand = "./server"
-healthcheckPath = "/health"  # if you have a health endpoint
+healthcheckPath = "/health"

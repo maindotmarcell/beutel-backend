@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build binary with optimizations
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -v -ldflags="-s -w" -o server ./cmd/server
 
 # Final stage - minimal image
 FROM alpine:3.19
