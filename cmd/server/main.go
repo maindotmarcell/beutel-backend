@@ -32,16 +32,8 @@ func main() {
 	app.Use(logger.New())
 	app.Use(cors.New())
 
-	// Health check endpoint (includes network info)
-	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"status":  "ok",
-			"network": network,
-		})
-	})
-
 	// Setup API routes
-	api.SetupRoutes(app, chainProvider)
+	api.SetupRoutes(app, chainProvider, network)
 
 	// Get port from environment or default to 3000
 	port := os.Getenv("PORT")
