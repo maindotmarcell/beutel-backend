@@ -1,6 +1,9 @@
 package chain
 
-import "github.com/maindotmarcell/beutel-backend/pkg/types"
+import (
+	"github.com/maindotmarcell/beutel-backend/internal/logging"
+	"github.com/maindotmarcell/beutel-backend/pkg/types"
+)
 
 // Network represents a Bitcoin network
 type Network string
@@ -28,21 +31,22 @@ func ParseNetwork(s string) Network {
 
 // Provider abstracts blockchain data access.
 // Implementations: mempool.space, Electrum, own indexer, etc.
+// All methods accept a LogContext for canonical logging of upstream calls.
 type Provider interface {
 	// GetBalance returns confirmed and unconfirmed balance for an address
-	GetBalance(address string) (*types.Balance, error)
+	GetBalance(logCtx *logging.LogContext, address string) (*types.Balance, error)
 
 	// GetUTXOs returns unspent transaction outputs for an address
-	GetUTXOs(address string) ([]types.UTXO, error)
+	GetUTXOs(logCtx *logging.LogContext, address string) ([]types.UTXO, error)
 
 	// GetTransactions returns transaction history for an address
-	GetTransactions(address string) ([]types.Transaction, error)
+	GetTransactions(logCtx *logging.LogContext, address string) ([]types.Transaction, error)
 
 	// GetFeeRates returns recommended fee rates
-	GetFeeRates() (*types.FeeRates, error)
+	GetFeeRates(logCtx *logging.LogContext) (*types.FeeRates, error)
 
 	// BroadcastTx broadcasts a signed transaction hex and returns txid
-	BroadcastTx(txHex string) (string, error)
+	BroadcastTx(logCtx *logging.LogContext, txHex string) (string, error)
 
 	// Network returns the configured network
 	Network() Network

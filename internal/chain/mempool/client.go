@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/maindotmarcell/beutel-backend/internal/chain"
+	"github.com/maindotmarcell/beutel-backend/internal/logging"
 	"github.com/maindotmarcell/beutel-backend/pkg/types"
 )
 
@@ -45,10 +46,56 @@ func (c *Client) Network() chain.Network {
 	return c.network
 }
 
-func (c *Client) GetBalance(address string) (*types.Balance, error) {
-	url := fmt.Sprintf("%s/api/address/%s", c.baseURL, address)
+// doGet performs a GET request and records upstream call details in the log context
+func (c *Client) doGet(logCtx *logging.LogContext, url string) (*http.Response, error) {
+	start := time.Now()
 
 	resp, err := c.httpClient.Get(url)
+	duration := time.Since(start).Milliseconds()
+
+	// Record upstream call details for canonical logging
+	if logCtx != nil {
+		logCtx.Add("upstream_url", url)
+		logCtx.Add("upstream_method", "GET")
+		logCtx.Add("upstream_duration_ms", duration)
+		if resp != nil {
+			logCtx.Add("upstream_status", resp.StatusCode)
+		}
+		if err != nil {
+			logCtx.Add("upstream_error", err.Error())
+		}
+	}
+
+	return resp, err
+}
+
+// doPost performs a POST request and records upstream call details in the log context
+func (c *Client) doPost(logCtx *logging.LogContext, url string, contentType string, body io.Reader) (*http.Response, error) {
+	start := time.Now()
+
+	resp, err := c.httpClient.Post(url, contentType, body)
+	duration := time.Since(start).Milliseconds()
+
+	// Record upstream call details for canonical logging
+	if logCtx != nil {
+		logCtx.Add("upstream_url", url)
+		logCtx.Add("upstream_method", "POST")
+		logCtx.Add("upstream_duration_ms", duration)
+		if resp != nil {
+			logCtx.Add("upstream_status", resp.StatusCode)
+		}
+		if err != nil {
+			logCtx.Add("upstream_error", err.Error())
+		}
+	}
+
+	return resp, err
+}
+
+func (c *Client) GetBalance(logCtx *logging.LogContext, address string) (*types.Balance, error) {
+	url := fmt.Sprintf("%s/api/address/%s", c.baseURL, address)
+
+	resp, err := c.doGet(logCtx, url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch address: %w", err)
 	}
@@ -56,7 +103,11 @@ func (c *Client) GetBalance(address string) (*types.Balance, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("mempool API error (status %d): %s", resp.StatusCode, string(body))
+		errMsg := fmt.Sprintf("mempool API error (status %d): %s", resp.StatusCode, string(body))
+		if logCtx != nil {
+			logCtx.Add("upstream_error", errMsg)
+		}
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 
 	var data struct {
@@ -84,10 +135,10 @@ func (c *Client) GetBalance(address string) (*types.Balance, error) {
 	}, nil
 }
 
-func (c *Client) GetUTXOs(address string) ([]types.UTXO, error) {
+func (c *Client) GetUTXOs(logCtx *logging.LogContext, address string) ([]types.UTXO, error) {
 	url := fmt.Sprintf("%s/api/address/%s/utxo", c.baseURL, address)
 
-	resp, err := c.httpClient.Get(url)
+	resp, err := c.doGet(logCtx, url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch UTXOs: %w", err)
 	}
@@ -95,7 +146,11 @@ func (c *Client) GetUTXOs(address string) ([]types.UTXO, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("mempool API error (status %d): %s", resp.StatusCode, string(body))
+		errMsg := fmt.Sprintf("mempool API error (status %d): %s", resp.StatusCode, string(body))
+		if logCtx != nil {
+			logCtx.Add("upstream_error", errMsg)
+		}
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 
 	var mempoolUTXOs []struct {
@@ -153,10 +208,10 @@ type mempoolTx struct {
 	Fee  int64             `json:"fee"`
 }
 
-func (c *Client) GetTransactions(address string) ([]types.Transaction, error) {
+func (c *Client) GetTransactions(logCtx *logging.LogContext, address string) ([]types.Transaction, error) {
 	url := fmt.Sprintf("%s/api/address/%s/txs", c.baseURL, address)
 
-	resp, err := c.httpClient.Get(url)
+	resp, err := c.doGet(logCtx, url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch transactions: %w", err)
 	}
@@ -164,7 +219,11 @@ func (c *Client) GetTransactions(address string) ([]types.Transaction, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("mempool API error (status %d): %s", resp.StatusCode, string(body))
+		errMsg := fmt.Sprintf("mempool API error (status %d): %s", resp.StatusCode, string(body))
+		if logCtx != nil {
+			logCtx.Add("upstream_error", errMsg)
+		}
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 
 	var mempoolTxs []mempoolTx
@@ -258,10 +317,10 @@ func enrichTransaction(tx mempoolTx, address string) types.Transaction {
 	}
 }
 
-func (c *Client) GetFeeRates() (*types.FeeRates, error) {
+func (c *Client) GetFeeRates(logCtx *logging.LogContext) (*types.FeeRates, error) {
 	url := fmt.Sprintf("%s/api/v1/fees/recommended", c.baseURL)
 
-	resp, err := c.httpClient.Get(url)
+	resp, err := c.doGet(logCtx, url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch fee rates: %w", err)
 	}
@@ -269,7 +328,11 @@ func (c *Client) GetFeeRates() (*types.FeeRates, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("mempool API error (status %d): %s", resp.StatusCode, string(body))
+		errMsg := fmt.Sprintf("mempool API error (status %d): %s", resp.StatusCode, string(body))
+		if logCtx != nil {
+			logCtx.Add("upstream_error", errMsg)
+		}
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 
 	var fees types.FeeRates
@@ -280,10 +343,10 @@ func (c *Client) GetFeeRates() (*types.FeeRates, error) {
 	return &fees, nil
 }
 
-func (c *Client) BroadcastTx(txHex string) (string, error) {
+func (c *Client) BroadcastTx(logCtx *logging.LogContext, txHex string) (string, error) {
 	url := fmt.Sprintf("%s/api/tx", c.baseURL)
 
-	resp, err := c.httpClient.Post(url, "text/plain", strings.NewReader(txHex))
+	resp, err := c.doPost(logCtx, url, "text/plain", strings.NewReader(txHex))
 	if err != nil {
 		return "", fmt.Errorf("failed to broadcast transaction: %w", err)
 	}
@@ -295,11 +358,19 @@ func (c *Client) BroadcastTx(txHex string) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("broadcast failed: %s", string(body))
+		errMsg := fmt.Sprintf("broadcast failed (status %d): %s", resp.StatusCode, string(body))
+		if logCtx != nil {
+			logCtx.Add("upstream_error", errMsg)
+		}
+		return "", fmt.Errorf("%s", errMsg)
 	}
 
 	// mempool.space returns the txid as plain text
-	return strings.TrimSpace(string(body)), nil
+	txid := strings.TrimSpace(string(body))
+	if logCtx != nil {
+		logCtx.Add("txid", txid)
+	}
+	return txid, nil
 }
 
 // Ensure Client implements Provider
